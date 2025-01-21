@@ -1,9 +1,12 @@
+import importlib.util
 import os
+import signal
 import click
 
 from pydantic import ValidationError
-from subprocess import run, PIPE
+from subprocess import run, PIPE, Popen
 
+from testing import TestCase
 from testing.config import DETEST_PROJECTS
 from testing.containers.db import download_db_image, create_db_container
 from testing.cli.models import ProjectConfig, Commands, environment_variables_to_string
@@ -42,6 +45,7 @@ def create():
     config = ProjectConfig(
         path_to_project=path_to_project,
         project_name=project_name,
+        project_url="",
         parallel_execution=1,
         environment_variables={},
         commands=Commands(build="", run="", migrate=""),
@@ -70,9 +74,7 @@ Structure:
     print("Database image downloaded successfully")
 
 
-@cli.command()
-def init():
-    """Read and display the project configuration"""
+def read_config():
     try:
         with open("config.json") as f:
             config_data = ProjectConfig.model_validate_json(f.read())
@@ -83,7 +85,18 @@ def init():
     except ValidationError:
         print("Error: Invalid configuration in config.json")
         return
-    
+    return config_data
+
+
+@cli.command()
+def init():
+    """Read and display the project configuration"""
+
+    config_data = read_config()
+    if not config_data:
+        print("Error: Failed to read config.json")
+        return
+
     if not config_data.commands.migrate or not config_data.path_to_project:
         print("Error: Commands or path to project not found in config.json")
         return
@@ -100,7 +113,7 @@ def init():
     )
 
     env_vars = environment_variables_to_string(config_data.environment_variables)
-    command_to_run = f'{env_vars} {config_data.commands.migrate}'
+    command_to_run = f"{env_vars} {config_data.commands.migrate}"
 
     os.system(f"cd {DETEST_PROJECTS / config_data.project_name} && {command_to_run}")
     print("Database migrated successfully. Proceeding to extract schema")
@@ -110,3 +123,60 @@ def init():
         f.write(output)
 
     print("Schema extracted successfully")
+
+
+def discover_subclasses_from_folder():
+    subclasses = []
+    folder_path = "tests/"
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".py") and filename != "__init__.py":
+            module_name = filename[:-3]  # Remove the .py extension
+            module_path = os.path.join(folder_path, filename)
+
+            # Load the module
+            spec = importlib.util.spec_from_file_location(module_name, module_path)
+            if spec is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            loader = spec.loader
+            if loader is None:
+                continue
+            loader.exec_module(module)
+
+            # Discover subclasses
+            for name in dir(module):
+                obj = getattr(module, name)
+                if (
+                    isinstance(obj, type)
+                    and issubclass(obj, TestCase)
+                    and obj is not TestCase
+                ):
+                    subclasses.append(obj)
+    return subclasses
+
+
+@cli.command()
+def test():
+    confdata = read_config()
+    if not confdata:
+        print("Error: Failed to read config.json")
+        return
+
+    test_cases = discover_subclasses_from_folder()
+
+    process = Popen(
+        f"cd {DETEST_PROJECTS / confdata.project_name} && {confdata.commands.build} && {confdata.commands.run}",
+        shell=True,
+        preexec_fn=os.setsid,
+    )
+    pid = process.pid
+
+    for test_case in test_cases:
+        tc = test_case(url=confdata.project_url)
+        try:
+            tc.run()
+        except AssertionError as e:
+            print(f"Error: {e}")
+        print(f"Test {test_case.__name__} passed")
+
+    os.killpg(os.getpgid(pid), signal.SIGTERM)

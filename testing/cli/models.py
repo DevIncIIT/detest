@@ -10,6 +10,7 @@ class Commands(BaseModel):
 class ProjectConfig(BaseModel):
     path_to_project: str
     project_name: str
+    project_url: str
     parallel_execution: int
     environment_variables: dict[str, str]
     commands: Commands

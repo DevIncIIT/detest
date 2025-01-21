@@ -1,7 +1,10 @@
+from httpx import AsyncClient
+
 class TestCase:
-    def __init__(self):
+    def __init__(self, url: str):
         self.setup()
         self.run()
+        self.client = AsyncClient(base_url=url)
 
     def setup(self):
         pass
