@@ -180,7 +180,7 @@ def test():
     )
 
     process = Popen(
-        f"cd {DETEST_PROJECTS / confdata.project_name} && {confdata.commands.build} && {env_vars} {confdata.commands.run}",
+        f"cd {DETEST_PROJECTS / confdata.project_name} && {confdata.commands.migrate} && {confdata.commands.build} && {env_vars} {confdata.commands.run}",
         shell=True,
         preexec_fn=os.setsid,
     )
