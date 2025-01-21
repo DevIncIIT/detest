@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Callable
 
 
 class Commands(BaseModel):
@@ -16,5 +17,10 @@ class ProjectConfig(BaseModel):
     commands: Commands
 
 
-def environment_variables_to_string(environment_variables: dict[str, str]) -> str:
-    return " ".join([f"{key}={value}" for key, value in environment_variables.items()])
+def environment_variables_to_string(
+    environment_variables: dict[str, str], value_parser: Callable[[str], str] | None = None
+) -> str:
+    if value_parser is None:
+        value_parser = lambda x: x
+    
+    return " ".join([f"{key}={value_parser(value)}" for key, value in environment_variables.items()])

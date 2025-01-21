@@ -8,7 +8,7 @@ from subprocess import run, PIPE, Popen
 
 from testing import TestCase
 from testing.config import DETEST_PROJECTS
-from testing.containers.db import download_db_image, create_db_container
+from testing.containers.db import download_db_image, create_db_container, drop_db_container
 from testing.cli.models import ProjectConfig, Commands, environment_variables_to_string
 
 
@@ -119,6 +119,11 @@ def init():
     print("Database migrated successfully. Proceeding to extract schema")
 
     output = run(f"sqlacodegen {db_urls[0]}", stdout=PIPE).stdout.decode("utf-8")
+    
+    if not drop_db_container():
+        print("Error: Failed to drop database container")
+        return
+
     with open("schema.py", "w") as f:
         f.write(output)
 
@@ -164,8 +169,18 @@ def test():
 
     test_cases = discover_subclasses_from_folder()
 
+    db_urls = create_db_container(1)
+    if not db_urls:
+        print("Error: Failed to create database container")
+        return
+
+    env_vars = environment_variables_to_string(
+        confdata.environment_variables,
+        value_parser=lambda x: db_urls[0] if x == "$DB_URL" else x,
+    )
+
     process = Popen(
-        f"cd {DETEST_PROJECTS / confdata.project_name} && {confdata.commands.build} && {confdata.commands.run}",
+        f"cd {DETEST_PROJECTS / confdata.project_name} && {confdata.commands.build} && {env_vars} {confdata.commands.run}",
         shell=True,
         preexec_fn=os.setsid,
     )
@@ -180,3 +195,10 @@ def test():
         print(f"Test {test_case.__name__} passed")
 
     os.killpg(os.getpgid(pid), signal.SIGTERM)
+    print("Server process killed successfully")
+
+    if not drop_db_container():
+        print("Error: Failed to drop database container")
+        return
+
+    print("Database container dropped successfully")
