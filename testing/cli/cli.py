@@ -1,24 +1,12 @@
 import os
-
 import click
-from pydantic import BaseModel, ValidationError
+
+from pydantic import ValidationError
+from subprocess import run, PIPE
 
 from testing.config import DETEST_PROJECTS
 from testing.containers.db import download_db_image, create_db_container
-
-
-class Commands(BaseModel):
-    build: str
-    run: str
-    migrate: str
-
-
-class ProjectConfig(BaseModel):
-    path_to_project: str
-    project_name: str
-    parallel_execution: int
-    environment_variables: dict[str, str]
-    commands: Commands
+from testing.cli.models import ProjectConfig, Commands, environment_variables_to_string
 
 
 @click.group()
@@ -95,6 +83,10 @@ def init():
     except ValidationError:
         print("Error: Invalid configuration in config.json")
         return
+    
+    if not config_data.commands.migrate or not config_data.path_to_project:
+        print("Error: Commands or path to project not found in config.json")
+        return
 
     db_urls = create_db_container(1)
     if not db_urls:
@@ -107,10 +99,14 @@ def init():
         f"cd {DETEST_PROJECTS} && git clone {config_data.path_to_project} {config_data.project_name}"
     )
 
-    commands_to_run = [config_data.commands.migrate]
+    env_vars = environment_variables_to_string(config_data.environment_variables)
+    command_to_run = f'{env_vars} {config_data.commands.migrate}'
 
-    os.system(f"cd {DETEST_PROJECTS / config_data.project_name} && {' && '.join(commands_to_run)}")
-
+    os.system(f"cd {DETEST_PROJECTS / config_data.project_name} && {command_to_run}")
     print("Database migrated successfully. Proceeding to extract schema")
 
-    
+    output = run(f"sqlacodegen {db_urls[0]}", stdout=PIPE).stdout.decode("utf-8")
+    with open("schema.py", "w") as f:
+        f.write(output)
+
+    print("Schema extracted successfully")
