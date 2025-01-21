@@ -11,7 +11,6 @@ from subprocess import run, PIPE, Popen
 from testing import TestCase
 from testing.config import DETEST_PROJECTS
 from testing.containers.db import (
-    download_db_image,
     create_db_container,
     drop_db_container,
 )
@@ -71,13 +70,6 @@ Structure:
 └── tests/
 """
     )
-
-    dl_success = download_db_image()
-    if not dl_success:
-        print("Error: Failed to download database image")
-        return
-
-    print("Database image downloaded successfully")
 
 
 def read_config():
