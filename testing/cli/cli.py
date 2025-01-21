@@ -3,12 +3,18 @@ import os
 import signal
 import click
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from pydantic import ValidationError
 from subprocess import run, PIPE, Popen
 
 from testing import TestCase
 from testing.config import DETEST_PROJECTS
-from testing.containers.db import download_db_image, create_db_container, drop_db_container
+from testing.containers.db import (
+    download_db_image,
+    create_db_container,
+    drop_db_container,
+)
 from testing.cli.models import ProjectConfig, Commands, environment_variables_to_string
 
 
@@ -119,7 +125,7 @@ def init():
     print("Database migrated successfully. Proceeding to extract schema")
 
     output = run(f"sqlacodegen {db_urls[0]}", stdout=PIPE).stdout.decode("utf-8")
-    
+
     if not drop_db_container():
         print("Error: Failed to drop database container")
         return
@@ -169,7 +175,7 @@ def test():
 
     test_cases = discover_subclasses_from_folder()
 
-    db_urls = create_db_container(1)
+    db_urls = create_db_container(len(test_cases))
     if not db_urls:
         print("Error: Failed to create database container")
         return
@@ -186,13 +192,17 @@ def test():
     )
     pid = process.pid
 
-    for test_case in test_cases:
-        tc = test_case(url=confdata.project_url)
+    for i, test_case in enumerate(test_cases):
+        session = Session(bind=create_engine(db_urls[i]))
+        tc = test_case(url=confdata.project_url, session=session)
+
         try:
             tc.run()
         except AssertionError as e:
             print(f"Error: {e}")
         print(f"Test {test_case.__name__} passed")
+
+        session.close()
 
     os.killpg(os.getpgid(pid), signal.SIGTERM)
     print("Server process killed successfully")
