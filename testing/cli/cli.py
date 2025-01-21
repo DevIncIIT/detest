@@ -3,6 +3,9 @@ import os
 import click
 from pydantic import BaseModel, ValidationError
 
+from testing.config import DETEST_PROJECTS
+from testing.containers.db import download_db_image, create_db_container
+
 
 class Commands(BaseModel):
     build: str
@@ -71,6 +74,13 @@ Structure:
 """
     )
 
+    dl_success = download_db_image()
+    if not dl_success:
+        print("Error: Failed to download database image")
+        return
+
+    print("Database image downloaded successfully")
+
 
 @cli.command()
 def init():
@@ -85,3 +95,22 @@ def init():
     except ValidationError:
         print("Error: Invalid configuration in config.json")
         return
+
+    db_urls = create_db_container(1)
+    if not db_urls:
+        print("Error: Failed to create database container")
+        return
+
+    print(f"Database container created successfully: {db_urls}")
+
+    os.system(
+        f"cd {DETEST_PROJECTS} && git clone {config_data.path_to_project} {config_data.project_name}"
+    )
+
+    commands_to_run = [config_data.commands.migrate]
+
+    os.system(f"cd {DETEST_PROJECTS / config_data.project_name} && {' && '.join(commands_to_run)}")
+
+    print("Database migrated successfully. Proceeding to extract schema")
+
+    
