@@ -1,0 +1,10 @@
+{
+    "project_name": "example",
+    "parallel_execution": 1,
+    "environment_variables": {},
+    "commands": {
+        "build": "",
+        "run": "",
+        "migrate": ""
+    }
+}
