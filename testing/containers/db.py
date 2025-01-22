@@ -5,6 +5,7 @@ import psycopg2
 client = docker.from_env()
 
 CONTAINER_NAME = "postgres_multidb_container"
+PORT = 6969
 
 
 def create_db_container(no_of_databases: int) -> list[str] | None:
@@ -17,6 +18,11 @@ def create_db_container(no_of_databases: int) -> list[str] | None:
     Returns:
         list[str] | None: List of database names if successful, None otherwise.
     """
+    # containers = client.containers.list()
+    # if CONTAINER_NAME in [container.name for container in containers]:
+    #     print(f"Container {CONTAINER_NAME} already exists.")
+    #     drop_db_container()
+    #     time.sleep(5)
 
     try:
         # Pull the PostgreSQL Docker image
@@ -30,18 +36,19 @@ def create_db_container(no_of_databases: int) -> list[str] | None:
             "postgres:latest",
             name=CONTAINER_NAME,
             environment=env_vars,
-            ports={"5432/tcp": 5432},
+            ports={"5432/tcp": PORT},
             detach=True,
         )
 
-        # Wait for PostgreSQL to initialize
-        time.sleep(5)
-
-        # Connect to the PostgreSQL instance and create databases
-
-        connection = psycopg2.connect(
-            host="localhost", port=5432, user="admin", password="password"
-        )
+        while True:
+            try:
+                connection = psycopg2.connect(
+                    host="localhost", port=PORT, user="admin", password="password"
+                )
+                break
+            except Exception as e:
+                print(f"Error: {e}")
+                time.sleep(1)
         connection.autocommit = True
         cursor = connection.cursor()
 
@@ -54,7 +61,7 @@ def create_db_container(no_of_databases: int) -> list[str] | None:
         cursor.close()
         connection.close()
 
-        return db_names
+        return [f'postgresql://admin:password@0.0.0.0:{PORT}/{dbn}' for dbn in db_names]
 
     except Exception as e:
         print(f"Error: {e}")

@@ -110,13 +110,17 @@ def init():
         f"cd {DETEST_PROJECTS} && git clone {config_data.path_to_project} {config_data.project_name}"
     )
 
-    env_vars = environment_variables_to_string(config_data.environment_variables)
+    env_vars = environment_variables_to_string(
+        config_data.environment_variables,
+        value_parser=lambda x: db_urls[0] if x == "$DB_URL" else x,
+    )
     command_to_run = f"{env_vars} {config_data.commands.migrate}"
+    print(command_to_run)
 
     os.system(f"cd {DETEST_PROJECTS / config_data.project_name} && {command_to_run}")
     print("Database migrated successfully. Proceeding to extract schema")
 
-    output = run(f"sqlacodegen {db_urls[0]}", stdout=PIPE).stdout.decode("utf-8")
+    output = run(["sqlacodegen", db_urls[0]], stdout=PIPE).stdout.decode("utf-8")
 
     if not drop_db_container():
         print("Error: Failed to drop database container")
